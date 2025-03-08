@@ -3,40 +3,37 @@ import json
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-# Connect to local provider
-w3 = Web3(Web3.HTTPProvider(os.getenv("LOCAL_PROVIDER")))
+def interact_with_contract(contract_address):
+    with open("compiled_contract.json", "r") as file:
+        compiled_contract = json.load(file)
 
-# Set up the account
-account = os.getenv("ANVIL_ACCOUNT")
+    abi = compiled_contract["contracts"]["newContract.sol"]["newContract"]["abi"]
 
-# Address of the deployed contract (replace with the actual address after deploying)
-contract_address = "0x663F3ad617193148711d28f5334eE4Ed07016602"  # Update this after deploying
+    w3 = Web3(Web3.HTTPProvider(os.getenv("LOCAL_PROVIDER")))
+    account = os.getenv("ANVIL_ACCOUNT")
+    private_key = os.getenv("ANVIL_PRIVATE_KEY")
 
-# Load contract ABI
-with open("compiled_contract.json") as json_file:
-    compiled_contract = json.load(json_file)
+    contract = w3.eth.contract(address=contract_address, abi=abi)
 
-contract_id = list(compiled_contract['contracts']['Contract.sol'].keys())[0]
-contract_abi = compiled_contract['contracts']['Contract.sol'][contract_id]['abi']
+    # Update ID to 5341
+    nonce = w3.eth.get_transaction_count(account)
+    transaction = contract.functions.updateID(5341).build_transaction({
+        "from": account,
+        "nonce": nonce,
+        "gas": 2000000,
+        "gasPrice": w3.to_wei("20", "gwei"),
+        "chainId": 31337
+    })
+    signed_txn = w3.eth.account.sign_transaction(transaction, private_key=private_key)
+    txn_hash = w3.eth.send_raw_transaction(signed_txn.rawTransaction)
+    w3.eth.wait_for_transaction_receipt(txn_hash)
 
-# Create contract instance
-new_contract = w3.eth.contract(address=contract_address, abi=contract_abi)
+    # Get updated value
+    updated_value = contract.functions.viewMyId().call()
+    print(f"Updated value is {updated_value}")
 
-# Update ID
-update_tx = new_contract.functions.updateID(5341).build_transaction({
-    'from': account,
-    'nonce': w3.eth.get_transaction_count(account),
-    'chainId': 31337,
-})
-
-# Sign and send the transaction
-signed_update_tx = w3.eth.account.sign_transaction(update_tx, private_key=os.getenv("ANVIL_PRIVATE_KEY"))
-update_tx_hash = w3.eth.send_raw_transaction(signed_update_tx.raw_transaction)
-w3.eth.wait_for_transaction_receipt(update_tx_hash)
-
-# Call viewMyId to get the updated StudentId
-student_id = new_contract.functions.viewMyId().call()
-print(f"Updated value is: {student_id}")
+if _name_ == "_main_":
+    contract_address = input("Enter the deployed contract address: ")
+    interact_with_contract(contract_address)
